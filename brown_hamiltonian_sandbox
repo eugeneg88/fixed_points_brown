@@ -1,0 +1,618 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Mar  7 08:33:18 2024
+
+@author: evgeni
+"""
+
+
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import itertools
+import multiprocessing # create a process pool that uses all cpus
+import rebound
+from matplotlib.patches import Rectangle
+import matplotlib
+
+## useful functions 
+
+# eccentricity at the fixed point (Eq. 19)
+def ecc_fixed(jz, eps):
+    y= 9*eps*jz/8
+    x2 = np.fabs(jz) * (5 / 3 * (1+y)/(1-y))**0.5 
+    e2 = 1 - x2
+    if e2<0:
+        return 0
+    return e2**0.5
+
+# associated inclination (Eq. 20)
+def inc_fixed(jz, eps):
+    cos_inc_val = jz/(1-ecc_fixed(jz,eps)**2)**0.5 
+    return np.arccos(cos_inc_val)*180/np.pi
+
+# The Hamiltonian of the systesm - Quadrupole + Brown, Eq. 2 and 10.
+def Hamiltonian(ecc, omega, j_z, eps_sa):
+    G = (1-ecc**2)**0.5
+    
+    # the first term - Eq. 2
+    sec_term =   6*G**2 - 3*j_z**2 + 15*(1-G**2 - j_z**2/G**2 + j_z**2)*np.sin(omega)**2
+
+    # the second term, Eq. 10, also in Luo+2016
+    Brown_term =  (-8+5*np.sin(omega)**2)*G**2 + 5 * np.sin(omega)**2 * (j_z**2/G**2 - 1 - j_z**2)
+    return sec_term - 27 * j_z * eps_sa / 8 * Brown_term
+
+#plot energy levels, both specific contours and 2d colorbar
+# the separatrix is in red
+# the fixed point is in blue
+def plot_energy_levels(eps, inc_deg, labelx=False, labely=False, adjust=False, extra=False, H_custom=5, omega=90):
+    if np.sin(omega*np.pi/180)>0:
+        x_min, x_max = 0, 2*np.pi #range
+        cmap='viridis'
+    if np.sin(omega*np.pi/180)<0:
+        x_min, x_max = np.pi, 2*np.pi #range 
+        cmap='plasma'
+        
+    H = np.cos(inc_deg*np.pi/180)
+    G_min, G_max = H, 1
+    e_min, e_max = 0, (1-G_min**2)**0.5
+
+    num_points = 300
+    x_vals = np.linspace(x_min, x_max, num_points)
+    e_vals = np.linspace(e_min, e_max, num_points) 
+    G_vals = np.linspace(G_min, G_max, num_points) 
+
+    x_grid, G_grid = np.meshgrid(x_vals, G_vals)
+    x_grid, e_grid = np.meshgrid(x_vals, e_vals)
+
+# Calculate the Hamiltonian values at each point on the grid
+    H_values = Hamiltonian(e_grid, x_grid, H, eps)
+# Plot the phase space
+    # p - benchmark for energy levels
+    p = 0.2 + 0.7*ecc_fixed(H,eps)
+#    plt.figure(1)
+#   full 2D plot
+ #   plt.figure(figsize=(6, 5))
+    plt.contourf(x_grid/np.pi, e_grid, H_values, 50,cmap=cmap)
+  #  plt.colorbar(label='$\mathcal{H}$')
+#  plot individual lines
+    plt.contour(x_grid/np.pi, e_grid, H_values, cmap='copper', levels=np.linspace(np.min(H_values)*p+np.max(H_values)*(1-p) ,np.max(H_values)+0.01,21))
+#   plot separatrix
+    plt.contour(x_grid/np.pi, e_grid, H_values, colors='r',   linestyles='solid', levels=[Hamiltonian(0.001,0,H, eps)], linewidths=3)
+# any extra custom contours
+    plt.contour(x_grid/np.pi, e_grid, H_values, colors='navy',   linestyles='solid', levels=[H_custom], linewidths=2.5)
+
+#plot fixed point
+    if np.sin(omega*np.pi/180)>0:
+        plt.scatter(1/2, ecc_fixed(H,eps), color='b')
+    if np.sin(omega*np.pi/180)<0:
+        plt.scatter(3/2, ecc_fixed(H,eps), color='b')
+
+  #  plt.title(r'$\epsilon_{\rm SA}=$' + "%.3f" % eps + '\quad' +r'$j_{\rm z}=$' + "%.3f" % H, fontsize=26)
+    if labelx:
+        plt.xlabel(r'$\omega / \pi$')
+    if labely:
+        plt.ylabel('eccentricity')
+    if adjust:
+        plt.subplots_adjust(left=0.08, bottom=0.08, right=0.97, top=0.88, wspace=0.16, hspace=0.18)
+
+#plotting figures 1 and 2 - no N-body yet!
+def plot_fig_1():
+    plt.figure(figsize=(18,10))
+    plt.subplot(231)
+    plot_energy_levels(eps=0., inc_deg=30, labely=True)
+    plt.subplot(232)
+    plot_energy_levels(eps=0., inc_deg=45)
+    plt.subplot(233)
+    plot_energy_levels(eps=0., inc_deg=60)
+    plt.subplot(234)
+    plot_energy_levels(eps=0.2, inc_deg=30, labely=True, labelx=True)
+    plt.subplot(235)
+    plot_energy_levels(eps=0.2, inc_deg=45, labelx=True)
+    plt.subplot(236)
+    plot_energy_levels(eps=0.2, inc_deg=60, labelx=True)
+
+    plt.subplots_adjust(left=0.05, bottom=0.08, right=0.97, top=0.95, wspace=0.2, hspace=0.18)
+
+def plot_fig_2():
+    plt.figure(figsize=(18,10))
+    plt.subplot(231)
+    plot_energy_levels(eps=0., inc_deg=120, labely=True)
+    plt.subplot(232)
+    plot_energy_levels(eps=0., inc_deg=135)
+    plt.subplot(233)
+    plot_energy_levels(eps=0., inc_deg=150)
+    plt.subplot(234)
+    plot_energy_levels(eps=0.2, inc_deg=120, labely=True, labelx=True)
+    plt.subplot(235)
+    plot_energy_levels(eps=0.2, inc_deg=135, labelx=True)
+    plt.subplot(236)
+    plot_energy_levels(eps=0.2, inc_deg=150, labelx=True)
+
+    plt.subplots_adjust(left=0.12, bottom=0.08, right=0.95, top=0.95, wspace=0.2, hspace=0.18)
+
+def plot_fig_3_panel(j_z):
+# assugn colors - seems to be working...
+    col  = ['gray', 'lightcoral', 'maroon', 'teal', 'navy', 'navy', 'darkgreen', 'gray', 'pink', 'teal', 'maroon', 'navy',  'salmon', 'black' ]
+    n = int(15.5 * np.fabs(j_z))#random.randint(0, len(col) - 1)  
+    eps_lin=np.linspace(-0.0,0.3,100)
+    plt.subplot(121)
+    plt.plot(eps_lin, [ecc_fixed(j_z, x) for x in eps_lin], linewidth=3, color=col[n], label=r'$j_z = $' + str(j_z))
+    plt.plot(eps_lin, [ecc_fixed(-j_z, x) for x in eps_lin], linewidth=3, linestyle = 'dashed', color = col[n])
+
+    plt.xlabel(r'$\epsilon_{\rm SA}$')
+    plt.ylabel(r'$e_{\rm fix}$')
+    plt.legend(loc=4, fontsize=18)
+
+    plt.subplot(122)
+    plt.plot(eps_lin, [(inc_fixed(j_z, x) ) for x in eps_lin], linewidth=3, color=col[n], label=r'$j_z = $' + str(j_z))
+    plt.plot(eps_lin, [180 - (inc_fixed(-j_z, x)) for x in eps_lin], linewidth=3, linestyle = 'dashed', color = col[n])
+
+    plt.xlabel(r'$\epsilon_{\rm SA}$')
+    plt.ylabel(r'$\iota_{\rm fix}$' + ' [deg]')
+    plt.subplots_adjust(left=0.08, bottom=0.12, right=0.95, top=0.95, wspace=0.18, hspace=0.18)
+
+def plot_fig_3():
+    plt.figure(figsize=(12.5,6))
+
+    plot_fig_3_panel(0.2)
+    plot_fig_3_panel(0.5)
+    plot_fig_3_panel(0.7)
+    plot_fig_3_panel(0.75)
+    plot_fig_3_panel(0.8)
+    plot_fig_3_panel(0.85)
+
+#%%
+#auxillary functions 
+def get_a1(eps, m1, m2, m3, a2, e2):
+    k = (m3**2 / (m1+m2) * (m1+m2+m3) )
+    b2 = a2 * (1-e2**2)**0.5
+    
+    return k**(-1/3) * b2 * eps**(2/3)
+
+def get_eps(m2,m3,a1,a2,e2):
+    b2 = a2 * (1-e2**2)**0.5
+    return (a1/b2)**1.5 * m3 / m2 **0.5 / (m2+m3)**0.5
+#%%
+if True:
+    sim = rebound.Simulation()
+    sim.units = ('km', 'years', 'Msun')
+    sim.add("Earth")
+    sim.add("301")
+    ps = sim.particles          
+    print (ps[1].a)
+
+#%%
+def run_one_body2(j):
+    import rebound
+    import bottleneck as bn
+    sim = rebound.Simulation()
+    sim.units = ('AU', 'years', 'Msun')
+    sim.add("Sun")
+    sim.add(sat_code[j][0]+'99', hash=planet_name[j])
+    sim.add(sat_code[j])
+   # sim.add('501')
+    #sim.add('502')
+    #sim.add('503')
+    #sim.add('504')
+    #sim.add('Saturn')
+
+## rotate to a frame where the planet is coplanar
+    sim.move_to_com()
+    ps = sim.particles
+   
+    orbp = ps[1].calculate_orbit(ps[0])        
+ 
+    rot = rebound.Rotation.orbit(Omega=orbp.Omega, inc=orbp.inc, omega=orbp.omega)
+    
+    ps[0].rotate(rot.inverse())
+    ps[1].rotate(rot.inverse())
+    ps[2].rotate(rot.inverse())
+    
+    orbp = ps[1].calculate_orbit(ps[0])    
+    orbs = ps[2].calculate_orbit(primary=ps[1])
+    
+    omega_initial = orbs.omega
+    eps = get_eps(ps[1].m, ps[0].m, orbs.a, orbp.a, orbp.e)
+    jz = (1 - orbs.e**2)**0.5 * np.cos(orbs.inc)
+# test means elements
+ #   eps = sat_eps[j]
+  #  jz = sat_jz[j]
+
+# Set the integrator
+    sim.integrator = "ias15"  
+# Integrate the system for a certain number of years
+    P = sim.particles[1].calculate_orbit(primary=sim.particles[0]).P
+    nn=3
+    times = np.linspace(0, nn*P/eps, 10000)
+ #   eps = 1e-10
+    args_p = np.zeros(len(times))
+    args_s = np.zeros(len(times))
+    nodes_p = np.zeros(len(times))
+    nodes_s = np.zeros(len(times))
+
+    ecc_p = np.zeros(len(times))
+    ecc_s = np.zeros(len(times))
+    inc_s = np.zeros(len(times))
+    H = np.zeros(len(times))
+    a_s = np.zeros(len(times))
+
+    for i, t in enumerate(times):
+        sim.integrate(t)
+        orbp = ps[1].calculate_orbit(ps[0])    
+        orbs = ps[2].calculate_orbit(primary=ps[1])
+        
+        args_p[i] = orbp.omega  # Argument of pericentre of the planet
+        args_s[i] = orbs.omega  # Argument of pericentre of the satellite
+        nodes_p[i] = orbp.Omega  # Argument of pericentre of the planet
+    #    print(orbs.inc, np.cos(orbs.inc), (1 - orbs.e**2)**0.5 * np.cos(orbs.inc))
+        nodes_s[i] =orbs.Omega# (1 - orbs.e**2)**0.5 * np.cos(orbs.inc) ##orbs.Omega  # Argument of pericentre of the satellite
+        ecc_p[i] = orbp.e  # Argument of pericentre of the planet
+        ecc_s[i] = orbs.e
+        inc_s[i] = orbs.inc *  180/ np.pi
+        H[i] = Hamiltonian(orbs.e, orbs.omega, jz, eps)
+        a_s[i] = orbs.a
+    
+    if True:
+        H_ave=np.average(H)
+ #       jz_ave = np.average(nodes_s)
+  #      jz_ave = np.average(nodes_s)
+
+        #plt.figure(31)
+        plt.figure(figsize=(14, 6))
+        plt.subplot(231)
+
+        plt.plot(times, [x/np.pi for x in args_s])
+        plt.ylabel(r'$\omega_1 /\pi$')
+        plt.tick_params(
+            axis='x',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False,         # ticks along the top edge are off
+            labelbottom=False) # labels along the bottom edge are off
+       
+        plt.subplot(233)
+        plt.text(-1.8*(nn*P/eps), 1.2,  sat_name[j] +': ' +r'$\epsilon_{\rm SA}=$'+ "%.3f" % eps +', '+ '\quad' +r'$j_{\rm z}=$' + "%.3f" % jz, fontsize=32)
+        plt.plot(times, [x/np.pi for x in nodes_s])
+        plt.ylabel(r'$\Omega_1/\pi$')
+        plt.tick_params(
+            axis='x',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False,         # ticks along the top edge are off
+            labelbottom=False) # labels along the bottom edge are off
+
+        plt.subplot(232) 
+        plt.plot(times, ecc_s)
+        plt.ylabel(r'$e_1$')
+        plt.tick_params(
+           axis='x',          # changes apply to the x-axis
+           which='both',      # both major and minor ticks are affected
+           bottom=False,      # ticks along the bottom edge are off
+           top=False,         # ticks along the top edge are off
+           labelbottom=False) # labels along the bottom edge are off
+        
+        plt.subplot(234)
+        plt.plot(times, inc_s)
+        plt.ylabel(r'$\iota\ \rm [deg]$')
+        plt.xlabel(r'$\rm time\ [yr]$')
+        
+        plt.subplot(235)
+        plt.xlabel(r'$\rm time\ [yr]$')
+        plt.plot(times, H, alpha=0.4)
+        H_sep=Hamiltonian(0.001,0,jz, eps)
+        #plt.xlabel(r'$time\ \rm [yr]')
+#
+        #dH_sec_djz = -6 * jz +30 * ecc_pasiphae**2 * np.sin(args_pasiphae)**2/(1 + ecc_pasiphae**2)
+        #dH_brown_djz = 
+        djz = [3/8/2 * eps * (5*e**2 * (np.cos(o)**2  + np.sin(o)**2 * jz**2/(1 - e**2)) + (1 - e**2) - jz**2) for (e,o) in zip(ecc_s, args_s)]
+      #  print('hi', H_ave, j_z, djz[-1], len(djz), len(args_pasiphae))
+        H2_plus = [Hamiltonian(e,o,jz + jj, eps) for (jj,e,o) in zip(djz, ecc_s, args_s)]
+        H2_minus = [Hamiltonian(e,o,jz - jj, eps) for (jj,e,o) in zip(djz, ecc_s, args_s)]
+        
+        ww=int(10000/nn*eps)
+        print (ww)
+    #    ww = int (10000/nn*0.05)
+        H2_plus = bn.move_mean(H2_plus, window=ww, min_count = int(ww/2))
+        H2_minus = bn.move_mean(H2_minus, window=ww, min_count = int(ww/2))
+        H2_plus = [x for x in H2_plus if not np.isnan(x)]
+        H2_minus = [x for x in H2_minus if not np.isnan(x)]
+        
+        plt.axhline(y=H_sep, color="red", linestyle="--", linewidth=3)
+        plt.axhline(y=H_ave, color="navy", linestyle="--", linewidth=3)
+        plt.plot(times[:len(H2_plus)], H2_plus, color='salmon', linestyle='solid', linewidth=3, alpha=0.9)
+        plt.plot(times[:len(H2_minus)], H2_minus, color='salmon', linestyle='solid', linewidth=3, alpha=0.9)
+        plt.ylabel(r'$\hat{E}$')
+        
+        plt.subplot(236)
+ #       plot_fft(ecc_pasiphae)
+        plot_energy_levels(eps, np.arccos(jz) * 180 / np.pi, extra=False, H_custom=np.average(H), omega=args_s[0]*180/np.pi, adjust=False)
+        plt.scatter(args_s/np.pi, ecc_s, color='grey', alpha=0.1)
+        plt.scatter(args_s[0]/np.pi, ecc_s[0], color='purple', alpha=1)
+        sign = np.sign(np.sin(args_s[0]))
+        plt.xlim([ (-sign+1 )/2, (-sign+1)/2 + 1])
+        plt.xlabel(r'$\omega_1 / \pi$')
+        plt.ylabel(r'$e_1$')
+
+        plt.subplots_adjust(left=0.06, bottom=0.12, right=0.98, top=0.92, wspace=0.25, hspace=0.)
+#%%
+run_one_body2(48)
+#%%
+ind_all = [i for i in range(0,293)]
+for j in irreg2:
+    run_one_body2(j)
+    plt.savefig(str(j)+'orb_hor_test'+'.png')
+    plt.clf()
+#5, 7 not
+#2, 6 maybe
+#%%
+
+def run_one_nbody(name, eps, j_z, planet='Jupiter', sat_mass=1e-12, mean=0, omega_deg=90, Omega_deg = 90, e_0=0.1, inc_0=60*np.pi/180, a1 = 0.1, is_fixed_point=True, plot_t_evol=False, plot_phase_space=True, outcome=True):
+    import rebound
+    sim = rebound.Simulation()
+    sim.units = ('AU', 'years', 'Msun')
+    sim.add("Sun")
+
+# Add the Sun
+#    sim.add(m=1.0)  
+    # Add Jupiter
+    e_j=0
+    if planet == 'Jupiter':
+        planet_mass = 1.0/1047.56  # Jupiter's mass relative to the Sun
+        a_j = 5.2026032092
+        e_j = 0.0484979255
+        inc = 1.30326698
+        Omega = 100.46440702
+        l = 34.35151874
+        varpi = 14.33120687
+        mean_anomaly = l - varpi
+        omega = varpi - Omega
+    elif planet == 'Saturn':
+        planet_mass = 0.00028574157868275514  # Saturn's's mass relative to the Sun
+        a_j = 9.5549091915
+        e_j = 0.0555481426
+        inc = 2.48887878
+        Omega =  113.66550252
+        l = 50.07744430
+        varpi =  93.05723748
+        mean_anomaly = l - varpi
+        omega = varpi - Omega
+    elif planet == 'Uranus':
+        planet_mass = 4.3640020110608344e-05  # Jupiter's mass relative to the Sun
+        a_j = 19.2184460618
+        e_j =  0.0463812221
+        inc = 0.77319689
+        Omega =  74.00595701
+        l = 314.05500511
+        varpi =  173.00529106
+        mean_anomaly = l - varpi
+        omega = varpi - Omega
+    elif planet == 'Neptune':
+        planet_mass = 5.1282051282051286e-05  # Jupiter's mass relative to the Sun
+        a_j =  30.1103868694
+        e_j = 0.008678
+        inc = 1.76995259
+        Omega = 131.7840570
+        l = 304.34866548
+        varpi =  48.12027554
+        mean_anomaly = l - varpi
+        omega = varpi - Omega
+
+    sim.add(planet)    
+ #   sim.add(m=planet_mass, a=a_j, e=e_j, inc = inc * np.pi/180, omega= omega* np.pi/180, Omega = Omega * np.pi/180, M=mean_anomaly* np.pi/180)  # Jupiter
+  #  sim.move_to_com()
+# add the satellite 
+  #  print (j_z)
+    if is_fixed_point:
+        e_0 = ecc_fixed(j_z, eps)
+        inc_0 = inc_fixed(j_z, eps) * np.pi / 180 # in radians
+        omega_deg=90
+        mean = 0
+    a1 = get_a1(eps, sat_mass, planet_mass, 1, a_j, 0)
+  #  print(inc_0 * 180 / np.pi, e_0, np.cos(inc_0) * (1-e_0**2)**0.5)
+    sim.add(name)
+ #   sim.add(m=sat_mass, a=a1, e=e_0, inc=inc_0, Omega=np.pi / 180  *Omega_deg, omega= np.pi / 180  *omega_deg, M=np.pi / 180  *mean, primary=sim.particles[1])
+#evgeni 23.03 - added for rotations
+    sim.move_to_com()
+
+    ps = sim.particles
+
+    Omega_rot = ps[1].calculate_orbit().Omega
+    inc_rot = ps[1].calculate_orbit().inc
+    omega_rot = ps[1].calculate_orbit().omega
+
+    rot = rebound.Rotation.orbit(Omega = Omega_rot, inc = inc_rot, omega = omega_rot)
+
+    ps[0] = rot.inverse() * ps[0]
+    ps[1] = rot.inverse() * ps[1]
+    ps[2] = rot.inverse() * ps[2]
+
+# Set the integrator
+    sim.integrator = "ias15"  
+# Integrate the system for a certain number of years
+    P = sim.particles[1].calculate_orbit(primary=sim.particles[0]).P
+    times = np.linspace(0, 5*P/eps, 10000)
+    args_jupiter = np.zeros(len(times))
+    args_pasiphae = np.zeros(len(times))
+    nodes_jupiter = np.zeros(len(times))
+    nodes_pasiphae = np.zeros(len(times))
+
+    ecc_jupiter = np.zeros(len(times))
+    ecc_pasiphae = np.zeros(len(times))
+    inc_jupiter =np.zeros(len(times))
+    inc_pasiphae = np.zeros(len(times))
+    H = np.zeros(len(times))
+    a_pasiphae = np.zeros(len(times))
+    mean_jup = np.zeros(len(times))
+    inc_mut = np.zeros(len(times))
+
+    for i, t in enumerate(times):
+        sim.integrate(t)
+    #orb0 = sim.calculate_orbits(primary=sim.particles[0])
+   # orb4 = sim.particles[4].calculate_orbits(primary=sim.particles[4])
+        args_jupiter[i] = sim.particles[1].calculate_orbit(primary=sim.particles[0]).omega  # Argument of pericentre of Jupiter
+        args_pasiphae[i] = sim.particles[2].calculate_orbit(primary=sim.particles[1]).omega  # Argument of pericentre of Pasiphae
+        nodes_jupiter[i] = sim.particles[1].calculate_orbit(primary=sim.particles[0]).Omega  # Argument of pericentre of Jupiter
+        nodes_pasiphae[i] = sim.particles[2].calculate_orbit(primary=sim.particles[1]).Omega  # Argument of pericentre of Pasiphae
+        ecc_jupiter[i] = sim.particles[1].calculate_orbit(primary=sim.particles[0]).e  # Argument of pericentre of Jupiter
+        ecc_pasiphae[i] = sim.particles[2].calculate_orbit(primary = sim.particles[1]).e
+        inc_jupiter[i] = sim.particles[1].calculate_orbit(primary=sim.particles[0]).inc * 180/ np.pi
+        inc_pasiphae[i] = sim.particles[2].calculate_orbit(primary = sim.particles[1]).inc *  180/ np.pi
+        H[i] = Hamiltonian(ecc_pasiphae[i], args_pasiphae[i], j_z, eps)
+        a_pasiphae[i] = sim.particles[2].calculate_orbit(primary = sim.particles[1]).a
+        mean_jup[i] = sim.particles[1].calculate_orbit(primary = sim.particles[0]).M
+        inc_mut[i] = 180/np.pi* np.arccos (np.cos(inc_jupiter[i]* np.pi/180) * np.cos(inc_pasiphae[i]* np.pi/180) - np.sin(inc_jupiter[i]* np.pi/180) * np.sin(inc_pasiphae[i]* np.pi/180) * np.cos(nodes_jupiter[i] - nodes_pasiphae[i])      ) 
+ #   print (np.average(H))
+
+    if plot_phase_space:
+     #   plt.xlim([0,1])
+        plot_energy_levels(eps, np.arccos(j_z) * 180 / np.pi, extra=True, H_custom=np.average(H), omega=omega_deg, adjust=True)
+        plt.scatter(args_pasiphae/np.pi, ecc_pasiphae, color='grey', alpha=0.1)
+        plt.scatter(args_pasiphae[0]/np.pi, e_0, color='purple')
+        sign = np.sign(np.sin(omega_deg*np.pi/180))
+#        xmax = np.sign(np.sin(omega_deg*np.pi/180))
+        plt.xlim([ (-sign+1 )/2, (-sign+1)/2 + 1])
+    #    plt.subplots_adjust(left=0.15, bottom=0.15, right=0.94, top=0.88, wspace=0.16, hspace=0.18)
+
+ #   plt.scatter(args_pasiphae/np.pi, ecc_pasiphae, color='grey', alpha=0.3)
+    
+    if plot_t_evol:
+        H_ave=np.average(H)
+        #plt.figure(31)
+        plt.figure(figsize=(14, 6))
+        plt.subplot(231)
+
+        plt.plot([x/2/np.pi for x in times], [x/np.pi for x in args_pasiphae])
+ #        plt.plot([x/2/np.pi for x in times], mean_jup)
+        plt.ylabel(r'$\omega_1 /\pi$')
+        plt.tick_params(
+            axis='x',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False,         # ticks along the top edge are off
+            labelbottom=False) # labels along the bottom edge are off
+        plt.subplot(233)
+        plt.text(-2*(nn*P/eps/2/np.pi), 1.2, name +': ' +r'$\epsilon_{\rm SA}=$'+ "%.3f" % eps +', '+ '\quad' +r'$j_{\rm z}=$' + "%.3f" % j_z, fontsize=32)
+
+#        plt.title(name +': ' +r'$\epsilon_{\rm SA}=$'+ "%.3f" % eps + '\quad' +r'$j_{\rm z}=$' + "%.3f" % j_z, fontsize=32, loc='right')
+
+        plt.plot([x/2/np.pi for x in times], [x/np.pi for x in nodes_pasiphae])
+        plt.ylabel(r'$\Omega_1/\pi$')
+        plt.tick_params(
+            axis='x',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False,         # ticks along the top edge are off
+            labelbottom=False) # labels along the bottom edge are off
+
+        plt.subplot(232)
+  
+        plt.plot([x/2/np.pi for x in times], ecc_pasiphae)
+        plt.ylabel(r'$e_1$')
+  #      plt.xlabel(r'$time\ \rm [yr]$')
+        plt.tick_params(
+           axis='x',          # changes apply to the x-axis
+           which='both',      # both major and minor ticks are affected
+           bottom=False,      # ticks along the bottom edge are off
+           top=False,         # ticks along the top edge are off
+           labelbottom=False) # labels along the bottom edge are off
+        
+        plt.subplot(234)
+        plt.plot([x/2/np.pi for x in times], inc_mut)
+        plt.plot([x/2/np.pi for x in times], inc_pasiphae)
+        plt.ylabel(r'$\iota\ \rm [deg]$')
+        plt.xlabel(r'$\rm time\ [yr]$')
+        plt.subplot(235)
+        plt.xlabel(r'$\rm time\ [yr]$')
+        plt.plot([x/2/np.pi for x in times], H, alpha=0.4)
+        H_sep=Hamiltonian(0.001,0,j_z, eps)
+        #plt.xlabel(r'$time\ \rm [yr]')
+#
+        #dH_sec_djz = -6 * jz +30 * ecc_pasiphae**2 * np.sin(args_pasiphae)**2/(1 + ecc_pasiphae**2)
+        #dH_brown_djz = 
+        djz = [3/8/2 * eps * (5*e**2 * (np.cos(o)**2  + np.sin(o)**2 * j_z**2/(1 - e**2)) + (1 - e**2) - j_z**2) for (e,o) in zip(ecc_pasiphae, args_pasiphae)]
+      #  print('hi', H_ave, j_z, djz[-1], len(djz), len(args_pasiphae))
+        H2_plus = [Hamiltonian(e,o,j_z + jj, eps) for (jj,e,o) in zip(djz, ecc_pasiphae, args_pasiphae)]
+        H2_minus = [Hamiltonian(e,o,j_z - jj, eps) for (jj,e,o) in zip(djz, ecc_pasiphae, args_pasiphae)]
+        ww=int(10000/5*eps)
+        H2_plus = bn.move_mean(H2_plus, window=ww, min_count = int(ww/2))
+        H2_minus = bn.move_mean(H2_minus, window=ww, min_count = int(ww/2))
+        H2_plus = [x for x in H2_plus if not np.isnan(x)]
+        H2_minus = [x for x in H2_minus if not np.isnan(x)]
+        
+        H_plus = [H_ave + 1 * H_ave/j_z * d for d in djz]
+        H_minus = [H_ave - 1 * H_ave/j_z * d for d in djz]
+      #  print('hi2', H2_plus)
+
+        plt.axhline(y=H_sep, color="red", linestyle="--", linewidth=3)
+        plt.axhline(y=H_ave, color="navy", linestyle="--", linewidth=3)
+        plt.plot([x/2/np.pi for x in times[:len(H2_plus)]], H2_plus, color='salmon', linestyle='solid', linewidth=3, alpha=0.9)
+        plt.plot([x/2/np.pi for x in times[:len(H2_minus)]], H2_minus, color='salmon', linestyle='solid', linewidth=3, alpha=0.9)
+        plt.ylabel(r'$\hat{E}$')
+        plt.subplot(236)
+ #       plot_fft(ecc_pasiphae)
+        plot_energy_levels(eps, np.arccos(j_z) * 180 / np.pi, extra=False, H_custom=np.average(H), omega=omega_deg, adjust=False)
+        plt.scatter(args_pasiphae/np.pi, ecc_pasiphae, color='grey', alpha=0.1)
+        plt.scatter(args_pasiphae[0]/np.pi, e_0, color='purple')
+        sign = np.sign(np.sin(omega_deg*np.pi/180))
+#        xmax = np.sign(np.sin(omega_deg*np.pi/180))
+        plt.xlim([ (-sign+1 )/2, (-sign+1)/2 + 1])
+        plt.xlabel(r'$\omega_1 / \pi$')
+        plt.ylabel(r'$e_1$')
+
+        plt.subplots_adjust(left=0.06, bottom=0.12, right=0.98, top=0.92, wspace=0.25, hspace=0.)
+
+      #    plt.plot([x/2/np.pi for x in times], [x-y for (x,y) in zip(args_pasiphae, nodes_pasiphae)])
+     #   plt.ylabel(r'$a_p$')
+
+        mm = min(args_pasiphae)
+        MM = max(args_pasiphae)
+        print (MM, mm)
+        if MM - mm > 1.5 * np.pi:
+       #     print ('circulating')
+            return 'circ'
+        if MM - mm < np.pi:
+        #    print ('librating')
+            return 'lib'
+
+#%%
+def plot_fig_4():
+    plt.figure(figsize=(15, 10))
+    plt.subplot(221)
+    plt.ylabel('eccentricity')
+    run_one_nbody(0.055, 0.71)
+    plt.subplot(223)
+    plt.ylabel('eccentricity')
+    plt.xlabel(r'$\omega / \pi$')
+    run_one_nbody(0.06, 0.71)
+    plt.subplot(222)
+    plt.subplot(224)
+    run_one_nbody(0.161, 0.5)
+    plt.xlabel(r'$\omega / \pi$')
+    plt.subplots_adjust(left=0.06, bottom=0.07, right=0.98, top=0.95, wspace=0.13, hspace=0.18)
+
+def plot_fig_5():
+    plt.figure(figsize=(18, 10))
+    plt.subplot(231)
+    run_one_nbody(0.1, -0.71)
+    plt.ylabel('eccentricity')
+    plt.subplot(232)
+    run_one_nbody(0.16, -0.77)
+    plt.subplot(233)
+    run_one_nbody(0.09, -0.798)
+    plt.subplot(234)
+    run_one_nbody(0.15, -0.71)
+    plt.ylabel('eccentricity')
+    plt.xlabel(r'$\omega / \pi$')
+    plt.subplot(235)
+    run_one_nbody(0.168, -0.77)
+    plt.xlabel(r'$\omega / \pi$')
+    plt.subplot(236)
+    run_one_nbody(0.093, -0.798)
+    plt.xlabel(r'$\omega / \pi$')
+    plt.subplots_adjust(left=0.05, bottom=0.08, right=0.98, top=0.94, wspace=0.2, hspace=0.18)
+
+plot_fig_5()
+
+
