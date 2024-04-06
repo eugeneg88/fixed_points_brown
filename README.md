@@ -1,1 +1,1 @@
-# fixed_points_brown
+Calculated fixed points and librating orbits for the Brown Hamiltonian
