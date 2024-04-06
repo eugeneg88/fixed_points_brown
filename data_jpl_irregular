@@ -1,0 +1,680 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Feb 17 10:49:55 2024
+
+@author: evgeni
+"""
+
+import requests
+from bs4 import BeautifulSoup
+
+# URL of the page with the data
+url = "https://ssd.jpl.nasa.gov/sats/elem/#refs"
+
+# Send a GET request to the URL
+response = requests.get(url)
+
+# Check if the request was successful (status code 200)
+if response.status_code == 200:
+    # Parse the HTML content of the page
+    soup = BeautifulSoup(response.content, "html.parser")
+    
+    # Find the table containing the data
+    table = soup.find("table")
+    
+    # Extract data from the table
+    data = []
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) > 0:
+            data.append([cell.text.strip() for cell in cells])
+
+    # Print the data
+    for row in data:
+        print(row)
+else:
+    print("Failed to retrieve data from the website")
+
+#%%
+sat_id = [float(data[x][0]) for x in range(0,len(data))]
+planet_name = [(data[x][1]) for x in range(0,len(data))]
+sat_name = [(data[x][2]) for x in range(0,len(data))]
+sat_code = [(data[x][3]) for x in range(0,len(data))]
+sat_a = [float(data[x][7]) for x in range(0,len(data))]
+sat_e = [float(data[x][8]) for x in range(0,len(data))]
+sat_omega = [float(data[x][9]) for x in range(0,len(data))]
+sat_mean = [float(data[x][10]) for x in range(0,len(data))]
+sat_inc = [float(data[x][11]) for x in range(0,len(data))]
+sat_node = [float(data[x][12]) for x in range(0,len(data))]
+
+#%%                                                                                                                           
+mean_distances_au = [0.387, 0.723, 1.0, 1.524, 5.203, 9.537, 19.191, 30.069]
+giant_au = [ 5.203, 9.537, 19.191, 30.069]
+mp_g27 = [0.33, 4.78, 5.97, 0.642, 1898, 568, 86.8, 102]
+
+#in km
+def get_planet_dist(name):
+    if name=='Jupiter':
+        return giant_au[0] * 1.49e8
+    elif name== 'Saturn':
+        return giant_au[1]* 1.49e8
+    if name=='Uranus':
+        return giant_au[2]* 1.49e8
+    elif name== 'Neptune':
+        return giant_au[3]* 1.49e8
+    if name=='Mars':
+        return 1.524* 1.49e8
+    elif name== 'Earth':
+        return 1.* 1.49e8
+    elif name == 'Pluto':
+        return 39.5*1.49e8
+
+#in msun
+msun=1.989e33
+def get_planet_mass(name):
+    if name=='Jupiter':
+        return mp_g27[4]*1e27/msun
+    elif name== 'Saturn':
+        return mp_g27[5]*1e27/msun
+    if name=='Uranus':
+        return mp_g27[6]*1e27/msun
+    elif name== 'Neptune':
+        return mp_g27[7]*1e27/msun
+    if name=='Mars':
+        return mp_g27[3]*1e27/msun
+    elif name== 'Earth':
+        return mp_g27[2]*1e27/msun
+    elif name== 'Pluto':
+        return 0.013 * 1e27/msun
+#%%
+pd = [get_planet_dist(n) for n in planet_name]
+pm = [get_planet_mass(n) for n in planet_name] 
+   #%% 
+def get_eps(m2,m3,a1,a2,e2):
+    b2 = a2 * (1-e2**2)**0.5
+    return (a1/b2)**1.5 * m3 / m2 **0.5 / (m2+m3)**0.5
+
+sat_jz = [(1- e**2)**0.5 * np.cos(i * np.pi/180) for (e,i) in zip(sat_e, sat_inc)]
+
+sat_eps = [get_eps(pm[i],1,sat_a[i],pd[i],sat_e[i]) for i in range(0,len(sat_a))] 
+
+#mod_jz = [(1- e**2)**0.5 * i for (e,i) in zip(sat_e, mut_incs)]
+#%%
+plt.scatter(sat_eps, [x-y for (x,y) in zip(sat_jz, mod_jz)])
+#%%
+plt.scatter(sat_jz, sat_eps)
+#%%
+irreg2 = []
+import matplotlib.pyplot as plt
+def plot_scatter(x,y, planet, color):
+    lr=1e300
+    if planet == 'Jupiter':
+        lr = laplace_radii[4]
+    elif planet == 'Saturn':
+        lr = laplace_radii[5]
+    elif planet == 'Uranus':
+        lr = laplace_radii[6]
+    elif planet == 'Neptune':
+        lr = laplace_radii[7]
+ #   else:
+  #      lr=0
+    cc=0
+    for i in range(0,len(data)):
+        if planet_name[i] == planet and sat_a[i] >= 1 * lr and 3<=sat_inc[i]<=180:
+            cc+=1
+            plt.scatter(x[i], y[i], color = color)
+            irreg2.append(i)
+#            plt.xlabel(str())
+    print (cc)
+
+#for i in range(0,len(data)):
+ #   plot_scatter(sat_omega, sat_inc)
+#%%
+plot_scatter(sat_omega, sat_inc, 'Jupiter', 'red')
+plot_scatter(sat_omega, sat_inc, 'Saturn', 'blue')
+plot_scatter(sat_omega, sat_inc, 'Uranus', 'green')
+plot_scatter(sat_omega, sat_inc, 'Neptune', 'black')
+#%%
+#i=119
+i=0
+def get_dimless(i):
+    import rebound
+    sim = rebound.Simulation()
+    sim.units = ('AU', 'years', 'Msun')
+    sim.add("Sun")
+    sim.add(sat_code[i][0]+'99', hash=planet_name[i])
+    sim.add(sat_code[i])
+
+## rotate to a frame where the planet is coplanar
+    sim.move_to_com()
+    ps = sim.particles
+   
+    orbp = ps[1].calculate_orbit(ps[0])        
+ 
+    rot = rebound.Rotation.orbit(Omega=orbp.Omega, inc=orbp.inc, omega=orbp.omega)
+    
+    ps[0].rotate(rot.inverse())
+    ps[1].rotate(rot.inverse())
+    ps[2].rotate(rot.inverse())
+    
+    orbp = ps[1].calculate_orbit(ps[0])    
+    orbs = ps[2].calculate_orbit(primary=ps[1])
+    #print(planet_name[i], orbp.a, orbp.e, orbp.inc * 180 / np.pi, orbp.omega * 180 / np.pi, orbp.Omega * 180 / np.pi)
+   # print(sat_name[i], orbs.a, orbs.e, orbs.inc * 180 / np.pi, orbs.omega * 180 / np.pi, orbs.Omega * 180 / np.pi)
+   # rebound.OrbitPlotSet(sim);
+  #  print (ps[1].m, ps[0].m, orbs.a, orbp.a, orbp.e)
+    eps = get_eps(ps[1].m, ps[0].m, orbs.a, orbp.a, orbp.e)
+    jz = (1 - orbs.e**2)**0.5 * np.cos(orbs.inc)
+    print (i, eps, jz)
+    return eps, jz, orbs.e, orbs.omega
+get_dimless(29)
+#%%
+eps_horizons = np.zeros(len(data))
+jz_horizons = np.zeros(len(data))
+sat_e = np.zeros(len(data))
+sat_omega = np.zeros(len(data))
+#%%
+for i in range(0,len(data)):
+    
+    if i in irreg2 and not i==119:
+        eps, jz, e, o = get_dimless(i)
+        eps_horizons[i] = eps
+        jz_horizons[i] = jz
+        sat_e[i] = e
+        sat_omega[i] = o * 180 / np.pi
+#%%
+#plt.scatter(sat_eps, eps_horizons)
+eps_ssd_irr = []
+eps_hor_irr = []
+jz_ssd_irr = []
+jz_hor_irr = []
+
+for i in irreg2:
+    if not i ==119 and sat_jz[i]>-20:
+        eps_ssd_irr.append(sat_eps[i])
+        eps_hor_irr.append(eps_horizons[i])
+        jz_ssd_irr.append(sat_jz[i])
+        jz_hor_irr.append(jz_horizons[i])
+
+        #%%
+plt.scatter(jz_hor_irr, [np.sign(x)*np.fabs(x-y)/max(x,y) for x,y in zip(jz_ssd_irr, jz_hor_irr)], c=eps_hor_irr, s=100, cmap='copper', alpha=0.5)
+plt.scatter(eps_hor_irr, [np.fabs(x-y)/max(x,y) for x,y in zip(eps_ssd_irr, eps_hor_irr)], c=jz_hor_irr, s=100, cmap='copper', alpha=0.5)
+plt.yscale('log')
+plt.colorbar()  
+#%%
+import rebound
+sim = rebound.Simulation()
+for i in irreg:
+#    sat_name[i] = sat_name[i].replace('_','')    
+    print(i, sat_name[i])
+    sim.add(sat_code[i])
+#%%
+import numpy as np
+# Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune
+mean_distances_au = [0.387, 0.723, 1.0, 1.524, 5.203, 9.537, 19.191, 30.069]
+
+# Convert AU to kilometers
+au_to_km = 149597870.7  # 1 AU is approximately 149,597,870.7 kilometers
+planet_a = np.array(mean_distances_au) * au_to_km
+planet_e = [0.2056, 0.0068, 0.0167, 0.0934, 0.0484, 0.0542, 0.0472, 0.0086]
+
+planet_radii = [2439.7, 6051.8, 6371.0, 3389.5, 69911, 58232, 25362, 24622]
+mean_masses_kg = [3.3011e23, 4.8675e24, 5.9724e24, 6.4171e23, 1.8982e27, 5.6834e26, 8.6810e25, 1.0243e26]
+
+# Convert kilograms to solar masses
+kg_to_solar_masses = 1 / (1.989e30)  # 1 solar mass is approximately 1.989e30 kilograms
+planet_masses = np.array(mean_masses_kg) * kg_to_solar_masses
+j2s = [0.00006, 0.000027, 0.00108263, 0.001964, 0.01475, 0.01645, 0.012, 0.0113]
+
+
+#%%
+laplace_radii = []
+for i in range(len(planet_radii)):
+    val_to_append = j2s[i] * planet_masses[i] * planet_radii[i]**2 * planet_a[i]**3 * (1 - planet_e[i]**2)**1.5
+    laplace_radii.append(val_to_append**0.2)
+    
+    #%%
+print([x/y for (x,y) in zip(laplace_radii, planet_radii)])
+
+#$$
+#%%
+cc=0
+#Saturn
+# tarvos = 26 - nah
+#ijiraq=27
+#kiviuq = 29
+# narvi = 36 
+#J4_s31 = 66
+# 81
+# 84
+#S2020_s05 = 93
+# Tarqeq - almost 52
+
+## JUp
+#Pasiphae = 10 - good
+#Themisto =  17 - almost
+#Magaclite = 18 - good
+#carpo - 45
+# cyllene - 47 - almost
+# kore - 48 - yeah!
+#  'S2016_j4' - 90
+
+#uranus
+#iocaste - 26s
+ind_suspected = []
+for i in range(0,len(data)):
+    de=[]
+    dw=[]
+    lr=1e300
+    planet = planet_name[i]
+    if planet == 'Jupiter':
+        lr = laplace_radii[4]
+    elif planet == 'Saturn':
+        lr = laplace_radii[5]
+    if planet == 'Uranus':
+        lr = laplace_radii[6]
+    elif planet == 'Neptune':
+        lr = laplace_radii[7]
+#    print (i, sat_a[i], lr)
+    if sat_a[i] >= 1 * lr and (not i == 119):
+ #       print (i)
+ #       plt.scatter(saturnian_w[i], saturnian_a[i])
+        E_c = Hamiltonian(sat_e[i], sat_omega[i]*np.pi/180, jz_horizons[i],  eps_horizons[i])
+        E_s= Hamiltonian(0.001, 0, jz_horizons[i],  eps_horizons[i])
+        ef = ecc_fixed(jz_horizons[i], eps_horizons[i])
+        E_f = Hamiltonian(ef, np.pi/2,  jz_horizons[i],  eps_horizons[i])
+        if E_s<= E_c  and ef>0.05:# and planet=='Saturn':
+            e1 = E_f - E_c
+            e2 = E_c - E_s
+            e3 = E_f - E_s
+            print (i,ef, "%.3f"  % E_f, "%.3f" % E_c, "%.3f" % E_s, "%.3f" % (e2/e3), "%.3f" % sat_jz[i])#E_current, E_separatrix, E_fixed)# "%.3f" % (de/sat_eps[i]), "%.3f" % sat_jz[i], "%.3f" % sat_eps[i],  sat_name[i])
+#           print (i,sat_name[i], ef, "%.3f"  % E_f, "%.3f" % E_c, "%.3f" % E_s, "%.3f" % (e2/e3), "%.3f" % sat_jz[i])#E_current, E_separatrix, E_fixed)# "%.3f" % (de/sat_eps[i]), "%.3f" % sat_jz[i], "%.3f" % sat_eps[i],  sat_name[i])
+ 
+            cc=cc+1
+            plt.scatter(sat_jz[125], sat_eps[125])
+            ind_suspected.append(i)
+            #%%
+j=125
+#60 - no
+# 66, 69, 70- large -jz, misclassified
+ind_lib = [36, 48, 94, 125, 127, 164, 182, 191, 214, 269, 283, 285, 287]
+indices = [13,  21, 24, 26, 41, 48, 51, 57, 60, 61, 66, 69, 70, 79, 93, 94, 125, 127, 134, 164, 179, 182, 191,  214, 269, 283, 285, 287]
+indices2 = [14, 21, 26, 30, 32, 48, 50, 51, 54, 57, 61, 62, 66, 75, 86, 87, 94, 125, 127, 143, 150, 164, 179, 182, 191, 214, 269, 283, 285, 287]
+ind_circ = [13, 21, 24, 26, 41, 51, 60, 61, 66, 69, 70,79, 93]
+ind_mis = [66, 69, 70]
+ind_all=[i for i in range(0,293)]
+#, 269, 280, 283, 285, 286, 287
+#%%
+    #%%
+plt.rcParams.update({'font.size': 22})
+
+def get_rel_energies(i):
+    eps = eps_horizons[i]; jz = jz_horizons[i]
+#    print(eps, jz)
+  #  jz = sat_jz[i]; eps = sat_eps[i]
+    E_c = Hamiltonian(sat_e[i], sat_omega[i]*np.pi/180, jz,  eps)
+    E_s= Hamiltonian(0.001, 0, jz,  eps)
+    ef = ecc_fixed(jz, eps)
+    print(ef)
+    E_f = Hamiltonian(ef, np.pi/2,  jz,  eps)
+  #  dE = 15/8*5**0.5 * sat_e[i]**2 * sat_eps[i]* E_c/ (E_f - E_s)
+    C = (5/3)**0.5 * 9 / 8 
+    xerr = C * eps * sat_e[i]**2
+    decc = C * eps*sat_e[i]* ((1-sat_e[i]**2)**0.5 - sat_e[i]**2/2 * C * eps)
+    dH_cp = Hamiltonian(sat_e[i]+decc, sat_omega[i]*np.pi/180, jz,  eps)
+    dH_cm = Hamiltonian(sat_e[i]-decc, sat_omega[i]*np.pi/180, jz, eps)
+    
+   # djz = xerr#3/8 * sat_eps[i]*(1+4*sat_e[i]**2 - sat_jz[i]**2)#xerr
+    djz = 3/16 * eps* (5*sat_e[i]**2 * (np.cos(sat_omega[i]*np.pi/180)**2  + np.sin(sat_omega[i]*np.pi/180)**2 * jz**2/(1 - sat_e[i]**2)) + (1 - sat_e[i]**2) - jz**2)
+#    if i in indices:
+ #       print(i, sat_name[i], xerr, djz, djz/xerr)
+    dH_jp = Hamiltonian(sat_e[i], sat_omega[i]*np.pi/180, jz + djz,  eps)
+    dH_jm = Hamiltonian(sat_e[i], sat_omega[i]*np.pi/180, jz - djz,  eps)
+
+    dE = 3/8 * eps * ( 1 + 4 * sat_e[i]**2 - jz**2) * E_c / np.fabs((E_c - E_s))
+    dE_dim =  3/8 * eps * ( 1 + 4 * sat_e[i]**2 - jz**2)
+    E_c_plus = E_c * (1+ dE_dim)
+    E_c_minus = E_c * (1- dE_dim)
+
+    E_norm =  E_f - E_s  #np.fabs(E_s)#
+    val1 = (E_c  - E_s)/E_norm
+    efp = ecc_fixed(jz + djz, eps)
+    efm = ecc_fixed(jz - djz, eps)
+
+    E_fp = Hamiltonian(efp, np.pi/2,  jz + djz,  eps)
+    E_sp= Hamiltonian(0.001, 0, jz + djz,  eps)
+    
+    E_fm = Hamiltonian(efm, np.pi/2,  jz - djz,  eps)
+    E_sm= Hamiltonian(0.001, 0, jz - djz,  eps)
+
+    val_plus  = (dH_jp  - E_s)/(E_f - E_s)#E_norm
+    val_minus  = (dH_jm  - E_s)/(E_f - E_s)#E_norm
+ #   val_plus  = (dH_cp  - E_s)/E_norm
+  #  val_minus  = (dH_cm  - E_s)/E_norm
+    return val1, dE, val_plus, val_minus, E_s
+
+print (get_rel_energies(ind_suspected[0]))
+#%%
+label_suspected = 'circulating'
+label_circulating = 'circulating'
+label_librating = 'librating'
+#%%
+for count, i in enumerate(ind_suspected):
+    color='red'
+    E_val, dE, vp, vm, xerr = get_rel_energies(i)
+    add = 0
+    E_val = max(-5,E_val)
+    x_axis_val = count#sat_eps[i]
+ 
+    label_circulating='_no_legend'
+    
+    yerr = 0#np.array([[min(np.fabs(vp), np.fabs(vm)), max(np.fabs(vp), np.fabs(vm))]]).T
+    if i in ind_lib:
+ 
+        plt.figure(55, figsize=(6.5,5.2))
+        plt.scatter(-min(vp,vm), -E_val/min(vp,vm), marker='v', s=70, color='black')
+#        plt.text(-min(vp,vm) * (1 + 0.4*np.cos(1.8*i)), -E_val/min(vp,vm)*(1 + 0.4*np.sin(1.8*i)), sat_name[i])
+#        plt.text(-min(vp,vm)*(1-0.), -E_val/min(vp,vm)*(1-0.), sat_name[i])
+        if sat_name[i] == 'Ijiraq' or sat_name[i] == 'S2004_S31':
+            plt.text(-min(vp,vm)*(1+0.2), -E_val/min(vp,vm)*(1-0.08), sat_name[i])
+        if sat_name[i] == 'Carpo' or sat_name[i] == 'S2020_S05':
+            plt.text(-min(vp,vm)*(1-0.2), -E_val/min(vp,vm)*(1-0.43), sat_name[i])
+        if sat_name[i] == 'Euporie' or sat_name[i] == 'S2018_J4':
+            plt.text(-min(vp,vm)*(1-0.62), -E_val/min(vp,vm)*(1+0.2), sat_name[i])
+        if sat_name[i] == 'Neso':
+            plt.text(-min(vp,vm)*(1-0.55), -E_val/min(vp,vm)*(1-0.25), sat_name[i])
+            
+
+    elif i in ind_suspected and i not in ind_lib:
+        plt.figure(55)
+        plt.scatter(-min(vp,vm), -E_val/min(vp,vm), marker='D', s=70, color='gray')
+        plt.xscale('log'); plt.yscale('log')
+        plt.xlabel(r'$  \log \left( - \mathcal{E}_c^- \right)$')
+        plt.ylabel(r'$\log \Delta \mathcal{E} =  \log \left( - \mathcal{E}_c/\mathcal{E}_c^-\right)$')
+        plt.axhline(1.5,color='r', linestyle='dashed')
+        plt.axvline(0.1,color='r', linestyle='dashed')
+        if sat_name[i] == 'Psamathe' or sat_name[i] == 'S2019_S01':
+            plt.text(-min(vp,vm)*(1-0.2), -E_val/min(vp,vm)*(1-0.5), sat_name[i], color='grey')
+        if sat_name[i] == 'Siarnaq':
+            plt.text(-min(vp,vm)*(1-0.65), -E_val/min(vp,vm)*(1+0.35), sat_name[i], color='grey')
+        if sat_name[i] == 'Kore':
+            plt.text(-min(vp,vm)*(1-0.5), -E_val/min(vp,vm)*(1-0.3), sat_name[i], color='grey')
+ 
+        plt.subplots_adjust(bottom=0.16, left=0.16, top=0.97, right=0.98)
+#%%
+label_suspected = 'circulating'
+label_circulating = 'circulating'
+label_librating = 'librating'
+
+for count, i in enumerate(ind_suspected):
+    color='red'
+    E_val, dE, vp, vm, xerr = get_rel_energies(i)
+    add = 0
+    E_val = max(-5,E_val)
+    x_axis_val = count#sat_eps[i]
+ 
+    label_circulating='_no_legend'
+    
+    yerr = 0#np.array([[min(np.fabs(vp), np.fabs(vm)), max(np.fabs(vp), np.fabs(vm))]]).T
+    if i in ind_lib:
+        color='black'
+        if E_val >0:
+            plt.scatter(x_axis_val, E_val+add,  color=color, marker='v', s=70, linewidth=2, label=label_librating, alpha=1)
+            label_librating = '_nolegend'
+            plt.vlines(x = x_axis_val, ymin = min(vp, vm)+add, ymax = max(vp, vm)+add, colors = 'black', linewidth=3, alpha=0.4)
+            plt.scatter(x_axis_val, vp+add , marker='_', color= color, linewidth=3)
+            plt.scatter(x_axis_val, vm+add ,  marker='_', color= color, linewidth=3)
+            plt.text(count+0.2, -0.05, sat_name[i], rotation=90, fontsize=18, horizontalalignment='left',
+                verticalalignment='top', color=color)
+
+
+
+    elif i in ind_suspected and i not in ind_lib:
+        plt.figure(44, figsize=(12,5))
+      
+        plt.scatter(x_axis_val, E_val+add,  color='gray', marker='D', s=70, linewidth=2, label=label_suspected, alpha=1)
+        label_suspected = "_nolegend_"
+        plt.vlines(x = x_axis_val, ymin = min(vp, vm)+add, ymax = max(vp, vm)+add, colors = 'lightgrey', linewidth=3, alpha=0.4)
+        plt.scatter(x_axis_val, vp+add , marker='_', color= 'grey', linewidth=3)
+        plt.scatter(x_axis_val, vm+add ,  marker='_', color= 'grey', linewidth=3)
+        plt.text(count+0.2, -0.05, sat_name[i], rotation=90, fontsize=18, horizontalalignment='left',
+            verticalalignment='top', color='grey')
+  
+    plt.axhline(0,color='r', linestyle='dashed')
+    plt.axhline(1,color='green', linestyle='dashed', alpha=0.3)
+    plt.ylabel(r'$\mathcal{E}_c = (E_{\rm c} - E_{\rm s})/(E_{\rm fix} - E_{\rm s})$', fontsize=24)
+    panel='all'
+    if panel=='a':
+        plt.ylim([-0.1, 1.1])
+        plt.xlim([0.04,0.057])
+    if panel =='b':
+        plt.ylim([-1.99, 1.1])
+        plt.xlim([0.08,0.107])
+    if panel=='c':
+        plt.ylim([-2.1, 1.1])
+        plt.xlim([0.137,0.1455])
+        plt.legend()
+    if panel=='d':
+        plt.ylim([-1.1, 1.1])
+        plt.xlim([0.1601,0.179])
+        plt.subplots_adjust(left=0.155, bottom=0.15, right=0.98, top=0.96)
+    if panel=='all':
+        plt.ylim([-1.1, 1.1])
+        plt.xlim([-1,len(ind_suspected)])
+        plt.tick_params(
+            axis='x',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False,         # ticks along the top edge are off
+            labelbottom=False) # labels along the bottom edge are off
+        plt.legend(loc=4)
+        plt.subplots_adjust(left=0.1, bottom=0.02, right=0.97, top=0.96, wspace=0.16, hspace=0.18)
+    print (i,sat_name[i], "%.3f"  % E_val, "%.3f" %  min(vp, vm), "%.3f" % (E_val/min(vp, vm)))#E_current, E_separatrix, E_fixed)# "%.3f" % (de/sat_eps[i]), "%.3f" % sat_jz[i], "%.3f" % sat_eps[i],  sat_name[i]) 
+#%%
+my_map = matplotlib.colors.LinearSegmentedColormap.from_list("", ["forestgreen","navy","pink"])
+fig, ax = plt.subplots(figsize=(5.5,4.3))
+
+res_big1 = np.array(res_big).reshape([len(eps_big), len(jz_big)])
+ax.pcolor(jz_big, eps_big, res_big1, cmap=my_map, alpha=0.1)#'nipy_spectral')
+
+plt.ylabel(r'$\epsilon_{\rm SA}$', fontsize=22)
+plt.xlabel(r'$j_z$', fontsize=22)
+plt.subplots_adjust(left=0.16, bottom=0.17, right=0.97, top=0.96, wspace=0.16, hspace=0.18)
+zoom = 'none'
+zoom = 'retrograde'
+#zoom = 'retrograde'
+if zoom == 'retrograde':
+    plt.xlim([-0.9,-0.54])
+    plt.ylim([0.03,0.2])
+if zoom == 'prograde':
+    plt.xlim([0.3,0.9])
+    plt.ylim([0.03,0.13])
+if zoom == 'none':
+    plt.xlim([-0.9,0.9])
+    plt.ylim([0.03,0.3])
+
+cc = 'red'
+plt.plot( jz_big[20:42], [0.08 - kr * (np.fabs(jz_big[20] - x) )**ar for x in jz_big[20:42]] , linewidth=3, color = cc, linestyle='dashed')
+plt.plot( jz_big[20:42], [0.08 + kr * (np.fabs(jz_big[20] - x) )**ar for x in jz_big[20:42]] , linewidth=3, color = cc, linestyle='dashed')
+plt.plot( jz_big[277:331], [0.03 + 0.4 * (jz_big[330] - x )**0.8 for x in jz_big[277:331]] , linewidth=3, color = cc, linestyle='dashed')
+for i in irreg2:
+
+   # print (i[1])lightblue
+   if i in ind_suspected:
+       if i not in ind_lib:
+           dx = max(0,-sat_jz[i]-0.7)
+           plt.scatter(jz_horizons[i], eps_horizons[i], marker='D', facecolors='none', s=90, linewidths=3, color = 'gray', alpha=0.6)
+      #     if i in ind_suspected:
+       #        plt.text(jz_horizons[i]-0.08* len(sat_name[i])/5 , eps_horizons[i], str(sat_name[i]), fontsize=16, color='gray')          
+
+           if sat_jz[i]>-0.78 and zoom =='retrograde':
+               print(jz_horizons[i], eps_horizons[i], sat_name[i], planet_name[i])
+               plt.text(jz_horizons[i]+0.06* len(sat_name[i])/25- 0.07*max(0, len(sat_name[i])-7) + 0.5*max(0, len(sat_name[i])-7)*dx, eps_horizons[i]-0.015*max(0, len(sat_name[i])-7), str(sat_name[i]), fontsize=16, color='gray')          
+
+       elif i in ind_lib:
+           if zoom =='prograde':
+       
+               el = 0.0475
+               y_move = min(el, eps_horizons[i]) - el
+               plt.scatter(jz_horizons[i],eps_horizons[i], s=90, marker='v', color = 'black', facecolors='none', linewidths=3)
+               if eps_horizons[i]>0.045:
+                   plt.text(jz_horizons[i]+0.05 * len(sat_name[i])/12, eps_horizons[i]-0.0, str(sat_name[i]), fontsize=16)
+              
+           if zoom =='retrograde':
+                if not planet_name[i]=='Saturn' or sat_eps[i]>=0.08:
+                    plt.text(jz_horizons[i]-0.14 * len(sat_name[i])/15, eps_horizons[i]-0.012, str(sat_name[i]), fontsize=16)
+                    plt.scatter(jz_horizons[i],eps_horizons[i], s=90, marker='v', color = 'black', facecolors='none', linewidths=3)
+
+   else:
+        plt.scatter(jz_horizons[i], eps_horizons[i], s=50, marker='o', color = 'red', alpha=0.2)
+plt.text(0.66, 0.04, 'Inuit group', fontsize=16)
+
+
+        #%%
+for i in enumerate(indices):
+    print (i[1])
+    plt.scatter(sat_jz[i[1]], sat_eps[i[1]], marker='D', facecolors='none', s=50, color = 'gray')
+for i in enumerate(ind_lib):
+    print (i[1])
+    plt.scatter(sat_jz[i[1]], sat_eps[i[1]], s=50, marker='o', color = 'black')
+
+#%%
+#run_one_nbody(name, eps, j_z, planet='Jupiter', sat_mass=1e-12, mean=0, omega_deg=90, Omega_deg = 90, e_0=0.1, inc_0=60*np.pi/180, a1 = 0.1, is_fixed_point=True, plot_t_evol=False, plot_phase_space=True, outcome=True):
+
+j=134#,134,164,179,182,191,214
+fp=False
+run_one_nbody(name=sat_name[j], plot_t_evol = True, plot_phase_space=False,  mean = sat_mean[j], eps=sat_eps[j], j_z=mod_jz[j], planet=planet_name[j], omega_deg = sat_omega[j], Omega_deg = sat_node[j], e_0 = sat_e[j], inc_0=sat_inc[j]*np.pi/180, a1 = sat_a[j]/1.49e8, is_fixed_point=fp)
+#plt.title(str(sat_name[j]) +': ' +r'$\epsilon_{\rm SA}=$'+ "%.3f" % sat_eps[j] + '\quad' +r'$j_{\rm z}=$' + "%.3f" % sat_jz[j], fontsize=26)
+#plt.xlabel(r'$\omega / \pi$')
+#plt.ylabel('eccentricity')"
+#plt.text(-1,3., str(sat_name[j]) +': ' +r'$\epsilon_{\rm SA}=$'+ "%.3f" % sat_eps[j] + '\quad' +r'$j_{\rm z}=$' + "%.3f" % sat_jz[j], fontsize=26)#plt.savefig(str(j)+'.png')
+#plt.clf()
+#plt.savefig(str(j)+'orb'+'.png')
+#plt.clf()
+#%%
+fp=False
+
+for j in indices: #ind_lib:#[281,282,284,286]:#51,60,61,66,69,70]:#ind_lib:
+    rr = run_one_nbody(name=sat_name[j], plot_t_evol = True, plot_phase_space=False,  mean = sat_mean[j], eps=sat_eps[j], j_z=sat_jz[j], planet=planet_name[j], omega_deg = sat_omega[j], Omega_deg = sat_node[j], e_0 = sat_e[j], inc_0=sat_inc[j]*np.pi/180, a1 = sat_a[j]/1.49e8, is_fixed_point=fp)
+    plt.savefig(str(j)+'orb'+'.png')
+    plt.clf()
+
+    #            run_one_nbody(eps=sat_eps[125], j_z=sat_jz[125], planet='Jupiter', sat_mass=1e-12, omega_deg=90, e_0=0.1, inc_0=60*np.pi/180, a1 = 0.1, is_fixed_point=True):
+    #%%
+for j in range(122,len(data)):
+    res = run_one_nbody(plot_t_evol = False, plot_phase_space=False,  eps=sat_eps[j], j_z=sat_jz[j], planet=planet_name[j], omega_deg = sat_omega[j], e_0=sat_e[j], inc_0=sat_inc[j]*np.pi/180+, a1 = sat_a[j]/1.49e8, is_fixed_point=False)
+    print (j, res)
+#def run_one_nbody(eps, j_z, planet='Jupiter', sat_mass=1e-12, omega_deg=90, e_0=0.1, inc_0=60*np.pi/180, a1 = 0.1, is_fixed_point=True):
+
+#%%
+for i in range(0,len(J_a)):
+    if J_a[i] >= 1 * J_laplace:
+ #       plt.scatter(saturnian_w[i], saturnian_a[i])
+    
+        E_current = hamiltonian(J_e[i], J_w[i]*np.pi/180, J_jz[i],  J_eps_sa[i],)
+        E_separatrix = hamiltonian(0.001, 0,  J_jz[i],  J_eps_sa[i],)
+        if  0*E_separatrix <= E_current  <= 5*E_separatrix and ecc(J_jz[i], J_eps_sa[i])>0.1 and i==10:
+            print (i, E_current, E_separatrix, J_name[i], J_eps_sa[i])
+
+plt.scatter(args_pasiphae/np.pi, ecc_pasiphae, color='grey', alpha=0.1)
+#%%
+import numpy as np
+
+#%%
+def ecc(jz, eps):
+    y= 9*eps*jz/8
+    x2 = np.fabs(jz) * (5 / 3 * (1+y)/(1-y))**0.5 
+    e2 = 1 - x2
+    if e2<0:
+        return 0
+    return e2**0.5
+
+def hamiltonian(ee,x,H, eps_sa):
+    G = (1-ee**2)**0.5
+  #  cosi = H/G
+    # Example Hamiltonian (modify this according to your specific problem)
+    sec_term =   6*G**2 - 3*H**2 + 15*(1-G**2 - H**2/G**2 + H**2)*np.sin(x)**2
+  #  sec_term = - ee**2/2 + cosi**2 + 1.5*ee**2*cosi**2 + 2.5*ee**2*(1-cosi**2)*np.cos(2*x)
+    katz =  (-8+5*np.sin(x)**2)*G**2 + 5 * np.sin(x)**2 * (H**2/G**2 - 1 - H**2)
+    return sec_term - 27 * H * eps_sa / 8 * katz
+
+def plot_energy_levels(n, eps, inc_deg, e0, w):
+    x_min, x_max = 0, 2*np.pi
+    H = np.cos(inc_deg*np.pi/180) * (1-e0**2)**0.5
+    G_min, G_max = H, 1
+    e_min, e_max = 0, (1-G_min**2)**0.5
+# Generate a grid of x and p values
+    num_points = 300
+    x_vals = np.linspace(x_min, x_max, num_points)
+    e_vals = np.linspace(e_min, e_max, num_points) 
+    G_vals = np.linspace(G_min, G_max, num_points) 
+#[(1-y**2)**0.5 for y in p_vals]
+    x_grid, G_grid = np.meshgrid(x_vals, G_vals)
+    x_grid, e_grid = np.meshgrid(x_vals, e_vals)
+# Calculate the Hamiltonian values at each point on the grid
+    H_values = hamiltonian(e_grid, x_grid, H, eps)
+
+# Plot the phase space
+    p = 0.2 + 0.7*ecc(H,eps)
+    plt.figure(n)
+  #  plt.figure(figsize=(8, 6))
+    plt.contourf(x_grid/np.pi, e_grid, H_values, 50, cmap='viridis')
+    plt.colorbar(label='$\mathcal{H}$')
+#plt.contour(x_grid/np.pi, e_grid, H_values, 20, cmap='Blues')
+    plt.contour(x_grid/np.pi, e_grid, H_values, cmap='copper', levels=np.linspace(np.min(H_values)*p+np.max(H_values)*(1-p) ,np.max(H_values)+0.01,21))
+    plt.contour(x_grid/np.pi, e_grid, H_values, colors='r', levels=[hamiltonian(0.001,0,H, eps)], linewidths=3)
+#    plt.scatter(1/2, ecc(H,eps))
+    plt.scatter(w*np.pi/180, e0)
+    plt.xlabel(r'$\omega / \pi$')
+    plt.ylabel('eccentricity')
+    plt.title(r'$\epsilon_{\rm SA}=$' + "%.2f" % eps + '\quad' +r'$j_{\rm z}=$' + "%.2f" % H)
+#plt.grid(True)
+ #   plt.show()
+#%%
+plt.figure(12)
+plt.subplot(121)
+a=plt.imread('125.png')
+plt.subplot(122)
+#b=plt.imread('127.png')
+plt.imshow('127.png')
+#%%
+
+# sampling rate
+sr = 20000
+# sampling interval
+ts = 1.0/sr
+t = np.arange(0,1,ts)
+
+freq = 5.
+x = 3*np.sin(2*np.pi*freq*t)
+
+freq = 37
+x += np.sin(2*np.pi*freq*t)
+
+freq = 271
+x += 0.5* np.sin(2*np.pi*freq*t)
+
+plt.figure(figsize = (8, 6))
+plt.plot(t, x, 'r')
+plt.ylabel('Amplitude')
+
+plt.show()
+from numpy.fft import fft, ifft
+#%%
+def plot_fft(x):
+    X = fft(x)
+    N = len(x)
+    n = np.arange(N)
+    freq = n 
+
+#    plt.figure(figsize = (12, 6))
+
+    plt.stem(freq, np.abs(X), 'b', \
+             markerfmt=" ", basefmt="-b")
+    plt.xlabel('Freq (Hz)')
+    plt.ylabel('log FFT Amplitude |X(freq)|')
+#    plt.xscale('log')
+    plt.xlim(0, 350)
+
+plot_fft(x)

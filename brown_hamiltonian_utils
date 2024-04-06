@@ -376,44 +376,6 @@ def E_over_de(eps, jz):
       
     return ((k-1)*Hs + minH)/(Hf - Hs), qq#(dEp - Hs)/1, (dEm - Hs)/1
 
-N1=100; N2=100
-jzz = np.linspace(-0.9, 0.9,N1)
-epss = np.linspace(0.03,0.30,N2)
-
-dE1 = np.zeros([N1,N2])
-dE2 = np.zeros([N1,N2])
-dE3 = np.zeros([N1,N2])
-for i in range(0,N1):
-    for j in range(0,N2):
-        dE1[i,j], dE2[i,j] = E_over_de(epss[j], jzz[i])
-#%%
-
-#plt.pcolor(dEpp, cmap='viridis')
-#plt.contourf(jzz, epss, np.log10(-np.transpose(dE1)),  cmap='viridis')
-plt.contourf(jzz, epss, (np.transpose(dE1)),  cmap='plasma', levels=np.linspace(-0.,0.1,101))
-cc='black'
-plt.colorbar()
-plt.contour(jzz, epss, np.transpose(dE1),  levels=[0],  linewidths=5, colors ='red', linestyles = 'dashed')
-plt.plot( jz_big[20:42], [0.08 - kr * (np.fabs(jz_big[20] - x) )**ar for x in jz_big[20:42]] , linewidth=3, color = cc, linestyle='dashed')
-plt.plot( jz_big[20:42], [0.08 + kr * (np.fabs(jz_big[20] - x) )**ar for x in jz_big[20:42]] , linewidth=3, color = cc, linestyle='dashed')
-plt.plot( jz_big[277:331], [0.03 + 0.4 * (jz_big[330] - x )**0.8 for x in jz_big[277:331]] , linewidth=3, color = cc, linestyle='dashed')
-plt.ylim([0.03,0.3])        
-
-#dEpp = np.zeros([])
-
-
-
-
-#%%
-ind_all = [i for i in range(0,293)]
-for j in irreg2:
-    run_one_body2(j)
-    plt.savefig(str(j)+'orb_hor_test'+'.png')
-    plt.clf()
-#5, 7 not
-#2, 6 maybe
-#%%
-
 #%%
 def run_one_body(eps, jz):
     import rebound
@@ -484,80 +446,7 @@ def run_one_body(eps, jz):
         a_s[i] = orbs.a
     
     if True:
-        H_ave=np.average(H)
- #       jz_ave = np.average(nodes_s)
-  #      jz_ave = np.average(nodes_s)
-
-        #plt.figure(31)
-        plt.figure(figsize=(14, 6))
-        plt.subplot(231)
-
-        plt.plot(times, [x/np.pi for x in args_s])
-        plt.ylabel(r'$\omega_1 /\pi$')
-        plt.tick_params(
-            axis='x',          # changes apply to the x-axis
-            which='both',      # both major and minor ticks are affected
-            bottom=False,      # ticks along the bottom edge are off
-            top=False,         # ticks along the top edge are off
-            labelbottom=False) # labels along the bottom edge are off
-       
-        plt.subplot(233)
-        plt.text(-1.8*(nn*P/eps), 1.2,  sat_name[j] +': ' +r'$\epsilon_{\rm SA}=$'+ "%.3f" % eps +', '+ '\quad' +r'$j_{\rm z}=$' + "%.3f" % jz, fontsize=32)
-        plt.plot(times, [x/np.pi for x in nodes_s])
-        plt.ylabel(r'$\Omega_1/\pi$')
-        plt.tick_params(
-            axis='x',          # changes apply to the x-axis
-            which='both',      # both major and minor ticks are affected
-            bottom=False,      # ticks along the bottom edge are off
-            top=False,         # ticks along the top edge are off
-            labelbottom=False) # labels along the bottom edge are off
-
-        plt.subplot(232) 
-        plt.plot(times, ecc_s)
-        plt.ylabel(r'$e_1$')
-        plt.tick_params(
-           axis='x',          # changes apply to the x-axis
-           which='both',      # both major and minor ticks are affected
-           bottom=False,      # ticks along the bottom edge are off
-           top=False,         # ticks along the top edge are off
-           labelbottom=False) # labels along the bottom edge are off
-        
-        plt.subplot(234)
-        plt.plot(times, inc_s)
-        plt.ylabel(r'$\iota\ \rm [deg]$')
-        plt.xlabel(r'$\rm time\ [yr]$')
-        
-        plt.subplot(235)
-        plt.xlabel(r'$\rm time\ [yr]$')
-        plt.plot(times, H, alpha=0.4)
-        H_sep=Hamiltonian(0.001,0,jz, eps)
-        #plt.xlabel(r'$time\ \rm [yr]')
-#
-        #dH_sec_djz = -6 * jz +30 * ecc_pasiphae**2 * np.sin(args_pasiphae)**2/(1 + ecc_pasiphae**2)
-        #dH_brown_djz = 
-        djz = [3/8/2 * eps * (5*e**2 * (np.cos(o)**2  + np.sin(o)**2 * jz**2/(1 - e**2)) + (1 - e**2) - jz**2) for (e,o) in zip(ecc_s, args_s)]
-      #  print('hi', H_ave, j_z, djz[-1], len(djz), len(args_pasiphae))
-        H2_plus = [Hamiltonian(e,o,jz + jj, eps) for (jj,e,o) in zip(djz, ecc_s, args_s)]
-        H2_minus = [Hamiltonian(e,o,jz - jj, eps) for (jj,e,o) in zip(djz, ecc_s, args_s)]
-        
-        ww=int(10000/nn*eps)
-        print (ww)
-    #    ww = int (10000/nn*0.05)
-  #      import bottleneck as bn
-
-        H2_plus = bn.move_mean(H2_plus, window=ww, min_count = int(ww/2))
-        H2_minus = bn.move_mean(H2_minus, window=ww, min_count = int(ww/2))
-   #     H2_plus = [x for x in H2_plus if not np.isnan(x)]
-    #    H2_minus = [x for x in H2_minus if not np.isnan(x)]
-        
-        plt.axhline(y=H_sep, color="red", linestyle="--", linewidth=3)
-        plt.axhline(y=H_ave, color="navy", linestyle="--", linewidth=3)
-        plt.plot(times[:len(H2_plus)], H2_plus, color='salmon', linestyle='solid', linewidth=3, alpha=0.9)
-        plt.plot(times[:len(H2_minus)], H2_minus, color='salmon', linestyle='solid', linewidth=3, alpha=0.9)
-        plt.ylabel(r'$\hat{E}$')
-        
-        plt.subplot(236)
- #       plot_fft(ecc_pasiphae)
+        plt.title(r'$\epsilon_{\rm SA}=$' + str(eps) + '\quad' +r'$j_{\rm z}=$' + "%.2f" % jz)
         plot_energy_levels(eps, np.arccos(jz) * 180 / np.pi, extra=False, H_custom=np.average(H), omega=args_s[0]*180/np.pi, adjust=False)
         plt.scatter(args_s/np.pi, ecc_s, color='grey', alpha=0.1)
         plt.scatter(args_s[0]/np.pi, ecc_s[0], color='purple', alpha=1)
@@ -568,44 +457,41 @@ def run_one_body(eps, jz):
 
         plt.subplots_adjust(left=0.06, bottom=0.12, right=0.98, top=0.92, wspace=0.25, hspace=0.)
 #%%
-run_one_body(0.17, 0.45)
-#%%
 def plot_fig_4():
     plt.figure(figsize=(15, 10))
     plt.subplot(221)
     plt.ylabel('eccentricity')
-    run_one_nbody(0.055, 0.71)
+    run_one_body(0.055, 0.71)
     plt.subplot(223)
     plt.ylabel('eccentricity')
     plt.xlabel(r'$\omega / \pi$')
-    run_one_nbody(0.06, 0.71)
+    run_one_body(0.06, 0.71)
     plt.subplot(222)
     plt.subplot(224)
-    run_one_nbody(0.161, 0.5)
+    run_one_body(0.161, 0.5)
     plt.xlabel(r'$\omega / \pi$')
     plt.subplots_adjust(left=0.06, bottom=0.07, right=0.98, top=0.95, wspace=0.13, hspace=0.18)
 
 def plot_fig_5():
     plt.figure(figsize=(18, 10))
     plt.subplot(231)
-    run_one_nbody(0.1, -0.71)
+    run_one_body(0.1, -0.71)
     plt.ylabel('eccentricity')
     plt.subplot(232)
-    run_one_nbody(0.16, -0.77)
+    run_one_body(0.16, -0.77)
     plt.subplot(233)
-    run_one_nbody(0.09, -0.798)
+    run_one_body(0.09, -0.798)
     plt.subplot(234)
-    run_one_nbody(0.15, -0.71)
+    run_one_body(0.15, -0.71)
     plt.ylabel('eccentricity')
     plt.xlabel(r'$\omega / \pi$')
     plt.subplot(235)
-    run_one_nbody(0.168, -0.77)
+    run_one_body(0.168, -0.77)
     plt.xlabel(r'$\omega / \pi$')
     plt.subplot(236)
-    run_one_nbody(0.093, -0.798)
+    run_one_body(0.093, -0.798)
     plt.xlabel(r'$\omega / \pi$')
     plt.subplots_adjust(left=0.05, bottom=0.08, right=0.98, top=0.94, wspace=0.2, hspace=0.18)
 
-plot_fig_5()
-
+#%%
 
